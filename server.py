@@ -1,53 +1,53 @@
+import asyncio
 import json
 import random
 
-
+import aiohttp
 from aiohttp import web
 
-subscribed_clients = {}
+
+def load_quotes() :
+  with open('quotes.json', 'r', encoding='utf-8') as f :
+    data = json.load(f)
+    return data
 
 
-async def handle(request):
-    name = request.match_info.get('name', "Anonymous")
-    text = "Hello, " + name
-    return web.Response(text=text)
+async def index(request) :
+  with open("./templates/index.html", 'r', encoding='utf-8') as f:
+    return web.Response(text=f.read(), content_type='text/html')
 
 
-async def registration(request):
-    name = request.match_info.get('name', "Anonymous")
-    reg = request.match_info.get('registration', '0')
-    responttext = ''
-    find = 0
-    if reg == 'subscribe':
-        for i in subscribed_clients:
-            if i == name:
-                find = 1
-                responttext = 'user with this login is already subscribed'
-        if find == 0:
-            subscribed_clients[name] = reg
-            responttext = 'Thank you for subscribe'
+async def websocket_handler(request) :
+  web_socket = web.WebSocketResponse()
+  await web_socket.prepare(request)
+  quotes = load_quotes()
+  subscribe = True
 
-        print(f'find= {find}')
-    if reg == 'unsubscribe':
-        subscribed_clients.pop(name, None)
-        responttext = 'User has been unsubscribed'
-    if reg == 'send_quotes':
-        with open("quotes.json", "r", encoding='utf-8') as file:
-            quotes_open = json.load(file)
-            index = str(random.randint(1, 20))
-            random_quotes = quotes_open[index]
-            # print(random_quotes)
+  while subscribe :
+    await asyncio.sleep(10)
+    id, quote = random.choice(list(quotes.items()))
+    await web_socket.send_str(quote)
 
-            responttext = random_quotes
-    print(subscribed_clients)
-    return web.Response(text=f'{name}. {responttext}')
+  async for msg in web_socket:
+    if msg.type == aiohttp.WSMsgType.TEXT:
+      if msg.data == 'close':
+        await web_socket.close()
+      else:
+        await web_socket.send_str(msg.data + '/answer')
+    elif msg.type == aiohttp.WSMsgType.ERROR:
+      print('ws connection closed with exception %s' %
+            web_socket.exception())
+
+  print('websocket connection closed')
+
+  return web_socket
 
 
 app = web.Application()
-app.add_routes([web.get('/', handle),
-                web.get('/{name}', handle),
-                web.get('/{name}/{registration}', registration),
-                ])
+app.add_routes([
+    web.get('/', index),
+  web.get('/ws', websocket_handler),
+])
 
-if __name__ == '__main__':
-    web.run_app(app)
+if __name__ == '__main__' :
+  web.run_app(app)
