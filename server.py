@@ -46,7 +46,7 @@ async def websocket_handler(request) :
 app = web.Application()
 app.add_routes([
     web.get('/', index),
-  web.get('/ws', websocket_handler),
+    web.get('/ws', websocket_handler),
 ])
 
 if __name__ == '__main__' :
