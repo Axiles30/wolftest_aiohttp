@@ -20,7 +20,7 @@
         <input type="text" size="40">
     </p>
     <br>
-    <button type="button" class="btn btn-success">ПОДПИСАТЬСЯ</button>
+    <button type="button" class="btn btn-success" id="subscribeBtn" data-status="unsubscribed">ПОДПИСАТЬСЯ</button>
     <br>
     <main>
         <p id="currentQuote"></p>
@@ -35,6 +35,22 @@
         ws.onmessage = (event) => {
             p.innerText = event.data;
         }
+        const subscribeBtn = document.getElementById('subscribeBtn');
+        subscribeBtn.addEventListener('click', ()=>{
+            if (subscribeBtn.dataset.status === 'unsubscribed') {
+                ws.send('subscribe');
+                subscribeBtn.dataset.status = 'subscribed';
+                subscribeBtn.innerText = "ОТПИСАТЬСЯ";
+
+            }
+            else if (subscribeBtn.dataset.status === 'subscribed') {
+                ws.send('unsubscribe');
+                subscribeBtn.dataset.status = 'unsubscribed';
+                subscribeBtn.innerText = "ПОДПИСАТЬСЯ";
+            }
+            subscribeBtn.classList.toggle('btn-success', 'btn-danger');
+        });
+
     </script>
 </center>
 </body>
