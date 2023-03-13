@@ -7,27 +7,22 @@ import aiohttp
 from aiohttp import web
 
 
-users = {}
+subscribers = []
 
-def register_user():
-    while True:
-        welcome_message = input('\nWant to subscribe to wolf quotes?\n'
-                                'If yes then write yes, if no then no: ').lower()
-        login = input('\nLogin: ')
-        password = input('Password: ')
-        if welcome_message == 'yes':
-            for i in users:
-                if i == login:
-                    print('This login is already exist')
-            if login != users:
-                users[login] = password
-                with open('users.json', 'w', encoding='utf-8') as file:
-                    users_in_json = json.dump(users, file, indent=4)
-                pprint(users)
-        if welcome_message == 'no':
-            users.pop(login, None)
-            pprint('User has been unsubscribed')
-            pprint(users)
+
+async def send_quotes(quotes) :
+	while True :
+		_, quote = random.choice(list(quotes.items()))
+		for websocket in subscribers :
+			try :
+				await websocket.send_str(quote)
+			except ConnectionError:
+				subscribers.remove(websocket)
+				print('Subscriber removed.')
+
+		await asyncio.sleep(10)
+
+
 
 
 """
@@ -36,10 +31,10 @@ def register_user():
 """
 
 
-def load_quotes():
-    with open('quotes.json', 'r', encoding='utf-8') as f:
-        data = json.load(f)
-        return data
+def load_quotes() :
+	with open('quotes.json', 'r', encoding='utf-8') as f :
+		data = json.load(f)
+		return data
 
 
 """
@@ -48,11 +43,11 @@ def load_quotes():
 """
 
 
-async def index(request):
-    with open("./templates/index.html", 'r', encoding='utf-8') as f:
-        """Создаем объект Response из модуля web и возвращает его как ответ на запрос. 
+async def index(request) :
+	with open("./templates/index.html", 'r', encoding='utf-8') as f :
+		"""Создаем объект Response из модуля web и возвращает его как ответ на запрос. 
 			Объект Response содержит текстовое содержимое файла index.html и тип содержимого 'text/html'."""
-        return web.Response(text=f.read(), content_type='text/html')
+		return web.Response(text=f.read(), content_type='text/html')
 
 
 """
@@ -61,14 +56,14 @@ async def index(request):
 """
 
 
-async def send_random_quote(quotes, web_socket):
-    while True:
-        """выбираем случайную цитату из словаря quotes и присваивает ее переменной quote."""
-        _, quote = random.choice(list(quotes.items()))
-        """отправляем цитату на web_socket в виде строки."""
-        await web_socket.send_str(quote)
-        """приостанавливаем выполнение функции на 10 секунд перед выбором следующей случайной цитаты."""
-        await asyncio.sleep(10)
+async def send_random_quote(quotes, web_socket) :
+	while True :
+		"""выбираем случайную цитату из словаря quotes и присваивает ее переменной quote."""
+		_, quote = random.choice(list(quotes.items()))
+		"""отправляем цитату на web_socket в виде строки."""
+		await web_socket.send_str(quote)
+		"""приостанавливаем выполнение функции на 10 секунд перед выбором следующей случайной цитаты."""
+		await asyncio.sleep(10)
 
 
 """
@@ -77,51 +72,59 @@ async def send_random_quote(quotes, web_socket):
 """
 
 
-async def websocket_handler(request):
-    """создаем объект веб-сокета."""
-    web_socket = web.WebSocketResponse()
-    """подготавливаем веб-сокет к работе."""
-    await web_socket.prepare(request)
-    """загружаем цитаты из файла JSON."""
-    quotes = load_quotes()
-    """получаем текущий цикл событий asyncio."""
-    loop = asyncio.get_event_loop()
+async def websocket_handler(request) :
+	"""создаем объект веб-сокета."""
+	websocket = web.WebSocketResponse()
+	"""подготавливаем веб-сокет к работе."""
+	await websocket.prepare(request)
 
-    task = None
-    """запускаем цикл асинхронной итерации для чтения сообщений из веб-сокета."""
-    async for msg in web_socket:
-        """проверяем, является ли сообщение текстовым."""
-        if msg.type == aiohttp.WSMsgType.TEXT:
-            """проверяем, была ли отправлена команда подписаться на рассылку цитат."""
-            if msg.data == 'subscribe':
-                """создаем задачу asyncio для отправки случайной цитаты через определенный интервал времени."""
-                task = loop.create_task(send_random_quote(quotes, web_socket))
-                """проверяем, была ли отправлена команда отписаться от рассылки цитат."""
-            elif msg.data == 'unsubscribe':
-                """отменяем задачу отправки цитат, если она была создана."""
-                if task:
-                    task.cancel()
-            """проверяем, является ли сообщение ошибкой веб-сокета."""
-        elif msg.type == aiohttp.WSMsgType.ERROR:
-            print('ws connection closed with exception %s' % web_socket.exception())
+	"""запускаем цикл асинхронной итерации для чтения сообщений из веб-сокета."""
+	async for msg in websocket :
+		"""проверяем, является ли сообщение текстовым."""
+		if msg.type == aiohttp.WSMsgType.TEXT :
+			"""проверяем, была ли отправлена команда подписаться на рассылку цитат."""
+			if msg.data == 'subscribe' :
+				"""создаем задачу asyncio для отправки случайной цитаты через определенный интервал времени."""
+				subscribers.append(websocket)
+				"""проверяем, была ли отправлена команда отписаться от рассылки цитат."""
+			elif msg.data == 'unsubscribe' :
+				"""отменяем задачу отправки цитат, если она была создана."""
+				subscribers.remove(websocket)
+			"""проверяем, является ли сообщение ошибкой веб-сокета."""
+		elif msg.type == aiohttp.WSMsgType.ERROR :
+			print('ws connection closed with exception %s' % websocket.exception())
 
-    print('websocket connection closed')
+	print('websocket connection closed')
 
-    return web_socket
+	return websocket
+
+
+async def main() :
+	quotes = load_quotes()
+	#loop = asyncio.get_event_loop()
+	#loop.run_until_complete(send_quotes(quotes))
+	#task =
+
+
+	app = web.Application()
+	app.add_routes([
+		web.get('/', index),
+		web.get('/ws', websocket_handler),
+	])
+	loop = asyncio.get_event_loop()
+
+	asyncio.run_coroutine_threadsafe(send_quotes(quotes), loop)
+	return app
 
 
 """создаем объект приложения веб-сервера из модуля web."""
-app = web.Application()
+
 """
 	Добавляем маршруты веб-страниц для приложения, 
 	используя метод add_routes объекта приложения. 
 	Маршруты определяются в виде списка и передаются в качестве аргумента в виде списка кортежей, 
 	каждый из которых содержит путь маршрута и функцию-обработчик запроса.
 """
-app.add_routes([
-    web.get('/', index),
-    web.get('/ws', websocket_handler),
-])
 
-if __name__ == '__main__':
-    web.run_app(app)
+if __name__ == '__main__' :
+	web.run_app(main())
